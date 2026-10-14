@@ -7,6 +7,7 @@ use App\Models\MilkRate;
 use App\Models\RateHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class MilkRateController extends Controller
@@ -29,7 +30,7 @@ class MilkRateController extends Controller
     {
         $validated = $request->validate([
             'rates' => 'required|array',
-            'rates.*.id' => 'nullable|integer|exists:milk_rates,id',
+            'rates.*.id' => 'nullable|integer|distinct|exists:milk_rates,id',
             'rates.*.milk_type' => 'required|in:cow,buffalo,a2',
             'rates.*.rate_per_litre' => 'required|numeric|min:0',
             'rates.*.fat_min' => 'required|numeric|min:0|max:15',
@@ -39,6 +40,12 @@ class MilkRateController extends Controller
         ]);
 
         DB::transaction(function () use ($validated) {
+            $slabs = $validated['rates'];
+            foreach ($slabs as $index => $slab) {
+                foreach (array_slice($slabs, $index + 1) as $other) {
+                    abort_if($slab['milk_type'] === $other['milk_type'] && $slab['fat_min'] <= $other['fat_max'] && $slab['fat_max'] >= $other['fat_min'] && $slab['snf_min'] <= $other['snf_max'] && $slab['snf_max'] >= $other['snf_min'], 422, 'Rate slabs must not overlap.');
+                }
+            }
             $keptIds = [];
 
             foreach ($validated['rates'] as $rateData) {
@@ -46,7 +53,7 @@ class MilkRateController extends Controller
                     abort(422, 'Fat/SNF minimum value cannot be greater than maximum value.');
                 }
 
-                $existing = !empty($rateData['id'])
+                $existing = ! empty($rateData['id'])
                     ? MilkRate::find($rateData['id'])
                     : null;
 
@@ -90,7 +97,7 @@ class MilkRateController extends Controller
         $sheet = IOFactory::load($validated['rate_chart']->getRealPath())->getActiveSheet();
         $highestRow = $sheet->getHighestDataRow();
         $highestColumn = $sheet->getHighestDataColumn();
-        $highestColumnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+        $highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
 
         $snfHeaders = [];
         for ($column = 2; $column <= $highestColumnIndex; $column++) {
@@ -101,18 +108,23 @@ class MilkRateController extends Controller
         }
 
         $rates = [];
+        $seen = [];
         for ($row = 3; $row <= $highestRow; $row++) {
             $fat = $sheet->getCell([1, $row])->getCalculatedValue();
-            if (!is_numeric($fat)) {
+            if (! is_numeric($fat)) {
                 continue;
             }
 
             foreach ($snfHeaders as $column => $snf) {
                 $rate = $sheet->getCell([$column, $row])->getCalculatedValue();
-                if (!is_numeric($rate)) {
+                if (! is_numeric($rate)) {
                     continue;
                 }
 
+                abort_if($fat < 0 || $fat > 15 || $snf < 0 || $snf > 15 || $rate < 0, 422, 'Chart contains invalid FAT, SNF or rate values.');
+                $key = sprintf('%.2f:%.2f', $fat, $snf);
+                abort_if(isset($seen[$key]), 422, 'Chart contains duplicate FAT/SNF combinations.');
+                $seen[$key] = true;
                 $rates[] = [
                     'milk_type' => $validated['milk_type'],
                     'fat_min' => (float) $fat,
@@ -137,7 +149,7 @@ class MilkRateController extends Controller
         });
 
         return response()->json([
-            'message' => count($rates) . ' rate slabs imported successfully.',
+            'message' => count($rates).' rate slabs imported successfully.',
         ]);
     }
 }

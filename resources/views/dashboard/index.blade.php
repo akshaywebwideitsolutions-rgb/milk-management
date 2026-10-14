@@ -82,8 +82,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="activity-item">
                     <div class="activity-dot"></div>
                     <div class="activity-info">
-                        <div class="activity-name">${activity.farmer_name}</div>
-                        <div class="activity-desc">${activity.action}</div>
+                        <div class="activity-name">${DairyApp.escapeHtml(activity.farmer_name)}</div>
+                        <div class="activity-desc">${DairyApp.escapeHtml(activity.action)}</div>
                     </div>
                     <div class="activity-meta">
                         <div class="activity-amount">${money(activity.amount)}</div>

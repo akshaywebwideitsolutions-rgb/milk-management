@@ -16,6 +16,9 @@ class AppServiceProvider extends ServiceProvider
             $emptyPaginator = new LengthAwarePaginator([], 0, 15);
 
             $defaults = [
+                'apiBaseUrl' => config('nativephp-internal.running')
+                    ? config('app.desktop_api_base_url')
+                    : (config('app.api_base_url') ?: url('/api')),
                 'totalFarmers' => 0,
                 'todayCollection' => 0,
                 'pendingInvoices' => 0,

@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BillCycle;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class BillCycleController extends Controller
 {
@@ -29,11 +32,19 @@ class BillCycleController extends Controller
             'sms_on_invoice' => 'boolean',
         ]);
 
-        $validated['name'] = Carbon::parse($validated['start_date'])->format('M Y') . ' - Cycle';
+        $validated['name'] = Carbon::parse($validated['start_date'])->format('M Y').' - Cycle';
         $validated['status'] = 'active';
 
-        BillCycle::where('status', 'active')->update(['status' => 'completed']);
-        $cycle = BillCycle::create($validated);
+        $cycle = DB::transaction(function () use ($validated) {
+            // Serialize cycle creation, including when there are no existing cycles.
+            User::where('is_admin', true)->orderBy('id')->lockForUpdate()->get();
+            if (BillCycle::where('start_date', '<=', $validated['end_date'])->where('end_date', '>=', $validated['start_date'])->exists()) {
+                throw ValidationException::withMessages(['start_date' => 'This period overlaps an existing bill cycle.']);
+            }
+            BillCycle::where('status', 'active')->update(['status' => 'completed']);
+
+            return BillCycle::create($validated);
+        });
 
         return response()->json(['message' => 'Bill cycle created.', 'data' => $cycle], 201);
     }

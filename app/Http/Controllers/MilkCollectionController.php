@@ -15,7 +15,10 @@ class MilkCollectionController extends Controller
     public function index(Request $request)
     {
         $date = $request->get('date', now()->toDateString());
-        $session = $request->get('session', 'morning');
+        $session = $request->get('session', now()->hour < 12 ? 'morning' : 'evening');
+        if ($session === 'auto') {
+            $session = now()->hour < 12 ? 'morning' : 'evening';
+        }
 
         $entries = MilkCollection::with('farmer')
             ->where('collection_date', $date)

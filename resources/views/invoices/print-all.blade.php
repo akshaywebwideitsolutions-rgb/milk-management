@@ -2,7 +2,8 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="api-base-url" content="{{ config('app.api_base_url') }}">
+    <meta name="web-base-url" content="{{ url('/') }}">
+    <meta name="api-base-url" content="{{ $apiBaseUrl }}">
     <title>All Invoices</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -95,7 +96,13 @@
             const page = payload.invoices?.data ? payload.invoices : payload.invoices || { data: [] };
             const cycle = (payload.cycles || []).find((item) => String(item.id) === String(cycleId)) || payload.current_cycle;
 
-            render(page.data || [], cycle);
+            const invoices = [...(page.data || [])];
+            for (let number = 2; number <= (page.last_page || 1); number++) {
+                query.set('page', String(number));
+                const next = await api(`/invoices?${query.toString()}`);
+                invoices.push(...(next.data.invoices.data || []));
+            }
+            render(invoices, cycle);
             setTimeout(() => window.print(), 300);
         } catch (error) {
             document.getElementById('print-root').className = 'error';

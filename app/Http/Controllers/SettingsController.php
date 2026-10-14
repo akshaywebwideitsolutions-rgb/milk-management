@@ -9,8 +9,7 @@ class SettingsController extends Controller
 {
     public function index()
     {
-        $currentCycle = BillCycle::where('status', 'active')->latest()->first();
-        return view('settings.index', compact('currentCycle'));
+        return view('settings.index');
     }
 
     public function update(Request $request)

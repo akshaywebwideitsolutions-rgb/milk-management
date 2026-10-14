@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'invoice_template_id' => env('MSG91_INVOICE_TEMPLATE_ID', ''),
     'gateway_url' => env('MSG91_FLOW_URL', env('SMS_GATEWAY_URL', 'https://control.msg91.com/api/v5/flow/')),
     'api_key' => env('MSG91_AUTHKEY', env('SMS_API_KEY', '')),
     'sender_id' => env('SMS_SENDER_ID', 'DAIRY'),

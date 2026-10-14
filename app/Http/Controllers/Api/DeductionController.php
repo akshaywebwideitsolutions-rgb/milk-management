@@ -7,8 +7,10 @@ use App\Models\BillCycle;
 use App\Models\Deduction;
 use App\Models\Farmer;
 use App\Models\Invoice;
-use App\Models\MilkCollection;
+use App\Services\InvoiceService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DeductionController extends Controller
 {
@@ -36,40 +38,60 @@ class DeductionController extends Controller
     public function store(Request $request)
     {
         $data = $this->validated($request);
-        $data['status'] = 'applied';
-        $data['created_by'] = auth()->id();
-        $deduction = Deduction::create($data);
-        $this->refreshInvoiceTotals($deduction->farmer_id, $deduction->bill_cycle_id);
 
-        return response()->json(['message' => 'Deduction added.', 'data' => $deduction], 201);
+        return DB::transaction(function () use ($data) {
+            Farmer::withTrashed()->whereKey($data['farmer_id'])->lockForUpdate()->firstOrFail();
+            $this->assertEditable($data['farmer_id'], $data['bill_cycle_id']);
+            $cycle = BillCycle::findOrFail($data['bill_cycle_id']);
+            abort_unless(Carbon::parse($data['deduction_date'])->betweenIncluded($cycle->start_date, $cycle->end_date), 422, 'Deduction date must be within the selected cycle.');
+            $data['status'] = 'applied';
+            $data['created_by'] = auth()->id();
+            $deduction = Deduction::create($data);
+            $this->refreshInvoiceTotals($deduction->farmer_id, $deduction->bill_cycle_id);
+
+            return response()->json(['message' => 'Deduction added.', 'data' => $deduction], 201);
+        });
     }
 
     public function update(Request $request, Deduction $deduction)
     {
-        $oldFarmerId = $deduction->farmer_id;
-        $oldCycleId = $deduction->bill_cycle_id;
+        return DB::transaction(function () use ($request, $deduction) {
+            Farmer::withTrashed()->whereKey($deduction->farmer_id)->lockForUpdate()->firstOrFail();
+            $deduction = Deduction::whereKey($deduction->id)->lockForUpdate()->firstOrFail();
+            $this->assertEditable($deduction->farmer_id, $deduction->bill_cycle_id);
+            $oldFarmerId = $deduction->farmer_id;
+            $oldCycleId = $deduction->bill_cycle_id;
 
-        $deduction->update($request->validate([
-            'deduction_type' => 'required|string|max:100',
-            'amount' => 'required|numeric|min:0',
-            'deduction_date' => 'required|date',
-            'status' => 'required|in:pending,applied',
-            'description' => 'nullable|string|max:300',
-        ]));
-        $this->refreshInvoiceTotals($oldFarmerId, $oldCycleId);
-        $this->refreshInvoiceTotals($deduction->farmer_id, $deduction->bill_cycle_id);
+            $cycle = BillCycle::findOrFail($deduction->bill_cycle_id);
+            $validated = $request->validate([
+                'deduction_type' => 'required|string|max:100',
+                'amount' => 'required|numeric|min:0',
+                'deduction_date' => 'required|date',
+                'status' => 'required|in:pending,applied',
+                'description' => 'nullable|string|max:300',
+            ]);
+            abort_unless(Carbon::parse($validated['deduction_date'])->betweenIncluded($cycle->start_date, $cycle->end_date), 422, 'Deduction date must be within the selected cycle.');
+            $deduction->update($validated);
+            $this->refreshInvoiceTotals($oldFarmerId, $oldCycleId);
+            $this->refreshInvoiceTotals($deduction->farmer_id, $deduction->bill_cycle_id);
 
-        return response()->json(['message' => 'Deduction updated.', 'data' => $deduction->refresh()]);
+            return response()->json(['message' => 'Deduction updated.', 'data' => $deduction->refresh()]);
+        });
     }
 
     public function destroy(Deduction $deduction)
     {
-        $farmerId = $deduction->farmer_id;
-        $cycleId = $deduction->bill_cycle_id;
-        $deduction->delete();
-        $this->refreshInvoiceTotals($farmerId, $cycleId);
+        return DB::transaction(function () use ($deduction) {
+            Farmer::withTrashed()->whereKey($deduction->farmer_id)->lockForUpdate()->firstOrFail();
+            $deduction = Deduction::whereKey($deduction->id)->lockForUpdate()->firstOrFail();
+            $this->assertEditable($deduction->farmer_id, $deduction->bill_cycle_id);
+            $farmerId = $deduction->farmer_id;
+            $cycleId = $deduction->bill_cycle_id;
+            $deduction->delete();
+            $this->refreshInvoiceTotals($farmerId, $cycleId);
 
-        return response()->json(['message' => 'Deduction deleted.']);
+            return response()->json(['message' => 'Deduction deleted.']);
+        });
     }
 
     private function validated(Request $request): array
@@ -86,7 +108,7 @@ class DeductionController extends Controller
 
     private function refreshInvoiceTotals(?int $farmerId, ?int $cycleId): void
     {
-        if (!$farmerId || !$cycleId) {
+        if (! $farmerId || ! $cycleId) {
             return;
         }
 
@@ -94,25 +116,15 @@ class DeductionController extends Controller
             ->where('bill_cycle_id', $cycleId)
             ->first();
 
-        if (!$invoice) {
+        if (! $invoice) {
             return;
         }
 
-        $collections = MilkCollection::where('farmer_id', $invoice->farmer_id)
-            ->whereBetween('collection_date', [$invoice->period_start, $invoice->period_end])
-            ->get();
+        app(InvoiceService::class)->refresh($invoice);
+    }
 
-        $grossAmount = $collections->sum('amount');
-        $totalDeductions = Deduction::where('farmer_id', $invoice->farmer_id)
-            ->where('bill_cycle_id', $invoice->bill_cycle_id)
-            ->where('status', 'applied')
-            ->sum('amount');
-
-        $invoice->forceFill([
-            'total_litres' => $collections->sum('quantity'),
-            'gross_amount' => $grossAmount,
-            'total_deductions' => $totalDeductions,
-            'net_amount' => $grossAmount - $totalDeductions,
-        ])->save();
+    private function assertEditable(int $farmerId, int $cycleId): void
+    {
+        abort_if(Invoice::where('farmer_id', $farmerId)->where('bill_cycle_id', $cycleId)->whereIn('status', ['sent', 'paid'])->exists(), 422, 'Deductions for finalized invoices cannot be changed.');
     }
 }

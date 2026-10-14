@@ -2,7 +2,8 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="api-base-url" content="{{ config('app.api_base_url') }}">
+    <meta name="web-base-url" content="{{ url('/') }}">
+    <meta name="api-base-url" content="{{ $apiBaseUrl }}">
     <title>Invoice Print</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -18,7 +19,7 @@
         td { padding: 7px 10px; border-bottom: 1px solid #E2E8F0; }
         .totals { text-align: right; }
         .totals td { border: none; padding: 4px 10px; }
-        .net-total { font-size: 16px; font-weight: 800; color: #10B981; border-top: 2px solid #0F172A; padding-top: 8px !important; }
+        .net-total { color: #10B981; border-top: 2px solid #0F172A; padding-top: 8px !important; }
         .footer { margin-top: 24px; text-align: center; font-size: 10px; color: #94A3B8; border-top: 1px solid #E2E8F0; padding-top: 12px; }
         .loading { text-align: center; color: #64748B; padding: 60px; }
         .error { text-align: center; color: #DC2626; padding: 60px; }
@@ -34,6 +35,7 @@
 
     const money = (value) => '₹' + Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const date = (value) => value ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value)) : '-';
+    const litres = (value) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' L';
     const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -68,7 +70,6 @@
                     <div class="sub">Pune, Maharashtra-410504</div>
                 </div>
                 <div style="text-align:right;">
-                    <div style="font-size:14px;font-weight:700;">INVOICE</div>
                     <div>${escapeHtml(invoice.invoice_no || '-')}</div>
                     <div style="font-size:11px;color:#64748B;">Generated: ${date(new Date())}</div>
                 </div>
@@ -80,7 +81,6 @@
                 <div class="info-item"><label>Phone:</label> ${escapeHtml(invoice.farmer?.phone || '-')}</div>
                 <div class="info-item"><label>Village:</label> ${escapeHtml(invoice.farmer?.village || '-')}</div>
                 <div class="info-item"><label>Period:</label> ${date(invoice.period_start)} - ${date(invoice.period_end)}</div>
-                <div class="info-item"><label>Status:</label> ${escapeHtml(String(invoice.status || '').toUpperCase())}</div>
             </div>
 
             <table>
@@ -101,6 +101,14 @@
                         </tr>
                     `).join('') : '<tr><td colspan="8" style="text-align:center;color:#94A3B8;">No collections</td></tr>'}
                 </tbody>
+                <tfoot>
+                    <tr style="background:#ECFDF5;font-weight:700;">
+                        <td colspan="5">Total Milk</td>
+                        <td>${litres(invoice.total_litres)}</td>
+                        <td></td>
+                        <td>${money(invoice.gross_amount)}</td>
+                    </tr>
+                </tfoot>
             </table>
 
             ${deductions.length ? `
@@ -118,6 +126,7 @@
             ` : ''}
 
             <table class="totals">
+                <tr style="font-weight:700;"><td>Total Milk:</td><td>${litres(invoice.total_litres)}</td></tr>
                 <tr><td>Gross Amount:</td><td>${money(invoice.gross_amount)}</td></tr>
                 <tr><td>Total Deductions:</td><td style="color:#EF4444;">- ${money(invoice.total_deductions)}</td></tr>
                 <tr><td class="net-total">Net Payable:</td><td class="net-total">${money(invoice.net_amount)}</td></tr>

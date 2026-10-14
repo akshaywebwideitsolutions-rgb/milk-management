@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', fn () => redirect()->route('login'));
 
 Route::get('login', [LoginController::class, 'showLoginForm'])->name('login');
-Route::post('login', [LoginController::class, 'login']);
+Route::post('login', [LoginController::class, 'login'])->middleware('throttle:5,1');
 Route::post('logout', [LoginController::class, 'logout'])->name('logout');
 
 Route::view('/dashboard', 'dashboard.index')->name('dashboard');
@@ -31,4 +31,4 @@ Route::view('/bill-cycles', 'bill-cycles.index')->name('bill-cycles.index');
 Route::view('/deductions', 'deductions.index')->name('deductions.index');
 Route::view('/farmer-history', 'farmer-history.index')->name('farmer-history.index');
 Route::view('/reports', 'reports.index')->name('reports.index');
-Route::view('/settings', 'settings.index')->name('settings.index');
+Route::get('/settings', [\App\Http\Controllers\SettingsController::class, 'index'])->name('settings.index');

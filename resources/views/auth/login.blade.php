@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="api-base-url" content="{{ config('app.api_base_url') }}">
+    <meta name="web-base-url" content="{{ url('/') }}">
+    <meta name="api-base-url" content="{{ $apiBaseUrl }}">
     <title>Login — Jay Malhar Dairy</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -80,6 +81,11 @@
         tokenKey: 'dairy_api_token',
         userKey: 'dairy_api_user',
 
+        webUrl(path) {
+            const base = document.querySelector('meta[name=web-base-url]').content.replace(/\/+$/, '');
+            return `${base}/${path.replace(/^\/+/, '')}`;
+        },
+
         token() {
             return localStorage.getItem(this.tokenKey);
         },
@@ -119,7 +125,7 @@
             };
 
             const response = await fetch(this.apiUrl(path), {
-                credentials: 'omit',
+                credentials: isSameOriginApi ? 'same-origin' : 'omit',
                 headers,
                 ...options,
             });
@@ -152,7 +158,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         if (DairyApp.token()) {
-            window.location.href = '/dashboard';
+            window.location.href = DairyApp.webUrl('/dashboard');
             return;
         }
 
@@ -192,7 +198,7 @@
                 }
 
                 DairyApp.setSession(token, result.user || result.data?.user || null);
-                window.location.href = '/dashboard';
+                window.location.href = DairyApp.webUrl('/dashboard');
             } catch (error) {
                 showError(error.message);
                 button.disabled = false;

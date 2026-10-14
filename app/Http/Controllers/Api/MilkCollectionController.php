@@ -4,17 +4,24 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Farmer;
+use App\Models\Invoice;
 use App\Models\MilkCollection;
 use App\Models\MilkRate;
+use App\Services\InvoiceService;
 use App\Services\SmsService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MilkCollectionController extends Controller
 {
     public function index(Request $request)
     {
         $date = $request->query('date', now()->toDateString());
-        $session = $request->query('session', 'morning');
+        $session = $request->query('session', now()->hour < 12 ? 'morning' : 'evening');
+        if ($session === 'auto') {
+            $session = now()->hour < 12 ? 'morning' : 'evening';
+        }
 
         $entries = MilkCollection::with('farmer')
             ->where('collection_date', $date)
@@ -42,10 +49,11 @@ class MilkCollectionController extends Controller
             'farmer_id' => 'required|exists:farmers,id',
             'collection_date' => 'required|date',
             'session' => 'required|in:morning,evening',
-            'fat_percent' => 'nullable|numeric|min:0|max:15',
-            'snf_percent' => 'nullable|numeric|min:0|max:15',
+            'fat_percent' => 'required|numeric|min:0|max:15',
+            'snf_percent' => 'required|numeric|min:0|max:15',
             'quantity' => 'required|numeric|min:0.1|max:200',
             'send_sms' => 'boolean',
+            'request_id' => 'required|uuid',
         ]);
 
         $farmer = Farmer::findOrFail($validated['farmer_id']);
@@ -61,21 +69,41 @@ class MilkCollectionController extends Controller
 
         $amount = round($validated['quantity'] * $rate, 2);
 
-        $collection = MilkCollection::create([
-            'farmer_id' => $farmer->id,
-            'collection_date' => $validated['collection_date'],
-            'session' => $validated['session'],
-            'milk_type' => $farmer->milk_type->value,
-            'fat_percent' => $fatPercent,
-            'snf_percent' => $snfPercent,
-            'quantity' => $validated['quantity'],
-            'rate_per_litre' => $rate,
-            'amount' => $amount,
-            'sms_sent' => false,
-            'recorded_by' => auth()->id(),
-        ]);
+        $collection = DB::transaction(function () use ($farmer, $validated, $fatPercent, $snfPercent, $rate, $amount) {
+            Farmer::whereKey($farmer->id)->lockForUpdate()->firstOrFail();
+            $existing = MilkCollection::where('request_id', $validated['request_id'])->first();
+            if ($existing) {
+                foreach (['farmer_id', 'session', 'quantity', 'fat_percent', 'snf_percent'] as $field) {
+                    abort_if((string) $existing->$field != (string) $validated[$field], 409, 'This request ID was already used for another delivery.');
+                }
+                abort_if($existing->collection_date->toDateString() !== Carbon::parse($validated['collection_date'])->toDateString(), 409, 'This request ID was already used for another date.');
 
-        if (!empty($validated['send_sms'])) {
+                return $existing;
+            }
+            abort_if(Invoice::where('farmer_id', $farmer->id)->whereIn('status', ['sent', 'paid'])->where('period_start', '<=', $validated['collection_date'])->where('period_end', '>=', $validated['collection_date'])->exists(), 422, 'This period has a finalized invoice.');
+
+            return MilkCollection::create([
+                'request_id' => $validated['request_id'],
+                'farmer_id' => $farmer->id,
+                'collection_date' => $validated['collection_date'],
+                'session' => $validated['session'],
+                'milk_type' => $farmer->milk_type->value,
+                'fat_percent' => $fatPercent,
+                'snf_percent' => $snfPercent,
+                'quantity' => $validated['quantity'],
+                'rate_per_litre' => $rate,
+                'amount' => $amount,
+                'sms_sent' => false,
+                'recorded_by' => auth()->id(),
+            ]);
+
+        });
+
+        foreach (Invoice::where('farmer_id', $farmer->id)->whereIn('status', ['draft', 'pending'])->where('period_start', '<=', $validated['collection_date'])->where('period_end', '>=', $validated['collection_date'])->get() as $invoice) {
+            app(InvoiceService::class)->refresh($invoice);
+        }
+
+        if ($collection->wasRecentlyCreated && ! empty($validated['send_sms'])) {
             try {
                 $sent = app(SmsService::class)->sendCollectionSMS($collection, $farmer);
                 $collection->update([
@@ -83,22 +111,22 @@ class MilkCollectionController extends Controller
                     'sms_status' => $sent ? 'sent' : 'failed',
                 ]);
             } catch (\Throwable $e) {
-                $collection->update(['sms_status' => 'failed: ' . $e->getMessage()]);
+                $collection->update(['sms_status' => 'failed: '.$e->getMessage()]);
             }
         }
 
         return response()->json([
             'message' => 'Milk collection entry saved.',
             'data' => $collection->fresh('farmer'),
-        ], 201);
+        ], $collection->wasRecentlyCreated ? 201 : 200);
     }
 
     public function getRate(Request $request)
     {
         $validated = $request->validate([
             'farmer_id' => 'required|exists:farmers,id',
-            'fat_percent' => 'nullable|numeric|min:0|max:15',
-            'snf_percent' => 'nullable|numeric|min:0|max:15',
+            'fat_percent' => 'required|numeric|min:0|max:15',
+            'snf_percent' => 'required|numeric|min:0|max:15',
         ]);
 
         $farmer = Farmer::findOrFail($validated['farmer_id']);

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class MilkCollection extends Model
 {
     protected $fillable = [
-        'farmer_id', 'collection_date', 'session', 'milk_type',
+        'farmer_id', 'collection_date', 'session', 'milk_type', 'request_id',
         'fat_percent', 'snf_percent', 'quantity', 'rate_per_litre',
         'amount', 'sms_sent', 'sms_status', 'recorded_by',
     ];
@@ -27,7 +27,7 @@ class MilkCollection extends Model
 
     public function farmer()
     {
-        return $this->belongsTo(Farmer::class);
+        return $this->belongsTo(Farmer::class)->withTrashed();
     }
 
     public function recordedBy()

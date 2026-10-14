@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }[char]));
 
     function selectedCycleId(currentCycle) {
-        return cycleSelect.value || currentCycle?.id || '';
+        return cycleSelect.value;
     }
 
     function syncPrintLink(cycleId) {
@@ -85,12 +85,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        printAllLink.href = `/invoices/print-all?bill_cycle_id=${encodeURIComponent(cycleId)}`;
+        printAllLink.href = DairyApp.webUrl(`/invoices/print-all?bill_cycle_id=${encodeURIComponent(cycleId)}`);
         printAllLink.style.display = '';
     }
 
     function renderCycles(cycles, currentCycle) {
-        const selected = params.get('bill_cycle_id') || currentCycle?.id || '';
+        const selected = cycleSelect.dataset.loaded ? cycleSelect.value : (params.has('bill_cycle_id') ? params.get('bill_cycle_id') : currentCycle?.id || '');
+        cycleSelect.dataset.loaded = '1';
         cycleSelect.innerHTML = '<option value="">All Cycles</option>' + cycles.map((cycle) => `
             <option value="${cycle.id}" ${String(cycle.id) === String(selected) ? 'selected' : ''}>${escapeHtml(cycle.name || 'Bill Cycle')}</option>
         `).join('');
@@ -123,8 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td><strong style="color:#10B981;">${money(invoice.net_amount)}</strong></td>
                     <td><span class="badge-status badge-${escapeHtml(status)}">${escapeHtml(status.charAt(0).toUpperCase() + status.slice(1))}</span></td>
                     <td>
-                        <a href="/invoices/${invoice.id}" class="btn-icon" title="View"><i class="fas fa-eye"></i></a>
-                        <a href="/invoices/${invoice.id}/print" class="btn-icon" title="Print" target="_blank"><i class="fas fa-print"></i></a>
+                        <a href="${DairyApp.webUrl(`/invoices/${invoice.id}`)}" class="btn-icon" title="View"><i class="fas fa-eye"></i></a>
+                        <a href="${DairyApp.webUrl(`/invoices/${invoice.id}/print`)}" class="btn-icon" title="Print" target="_blank"><i class="fas fa-print"></i></a>
                         <select data-invoice-status="${invoice.id}" class="form-input" style="width:90px;padding:4px 6px;font-size:11px;">
                             ${['pending', 'sent', 'paid'].map((option) => `<option value="${option}" ${status === option ? 'selected' : ''}>${option.charAt(0).toUpperCase() + option.slice(1)}</option>`).join('')}
                         </select>
@@ -156,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const query = new URLSearchParams();
-            if (cycleSelect.value) query.set('bill_cycle_id', cycleSelect.value);
+            if (cycleSelect.dataset.loaded || params.has('bill_cycle_id')) query.set('bill_cycle_id', cycleSelect.dataset.loaded ? cycleSelect.value : params.get('bill_cycle_id'));
 
             const response = await DairyApp.api(`/api/invoices?${query.toString()}`);
             const payload = response.data || response;

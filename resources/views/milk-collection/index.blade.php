@@ -17,6 +17,7 @@
         <form method="GET" action="{{ route('milk-collection.index') }}" style="display:flex;gap:8px;">
             <input type="date" name="date" class="form-input" id="filter-date" style="width:170px;">
             <select name="session" class="form-input" id="filter-session" style="width:130px;">
+                <option value="auto">Auto (time)</option>
                 <option value="morning">Morning</option>
                 <option value="evening">Evening</option>
             </select>
@@ -24,6 +25,7 @@
         </form>
     </div>
 </div>
+<p style="font-size:12px;color:#64748B;margin-top:8px;">Auto: Morning before 12 PM, Evening from 12 PM (India time). You can select either session manually and apply the filter.</p>
 
 <div class="collection-split" style="margin-top:16px;">
     <div class="card">
@@ -118,9 +120,16 @@
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
-    const today = new Date().toISOString().slice(0, 10);
+    const indiaParts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+    const today = `${indiaParts.year}-${indiaParts.month}-${indiaParts.day}`;
     const date = params.get('date') || today;
-    const session = params.get('session') || 'morning';
+    const requestedSession = params.get('session');
+    const sessionMode = ['morning', 'evening'].includes(requestedSession) ? requestedSession : 'auto';
+    const automaticSession = Number(indiaParts.hour) < 12 ? 'morning' : 'evening';
+    const session = sessionMode === 'auto' ? automaticSession : sessionMode;
     const form = document.getElementById('collection-form');
     const farmerSelect = document.getElementById('farmer-select');
     const farmerSearch = document.getElementById('farmer-search');
@@ -133,7 +142,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let allFarmers = [];
 
     document.getElementById('filter-date').value = date;
-    document.getElementById('filter-session').value = session;
+    document.getElementById('filter-session').value = sessionMode;
+    document.querySelector('#filter-session option[value="auto"]').textContent = `Auto (${automaticSession === 'morning' ? 'Morning' : 'Evening'})`;
     document.getElementById('collection-date').value = date;
     document.getElementById('collection-session').value = session;
     document.getElementById('entries-subtitle').textContent = `${date} - ${session.charAt(0).toUpperCase() + session.slice(1)}`;
@@ -160,7 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderFarmerOptions(farmers) {
         farmerSelect.innerHTML = '<option value="">- Choose Farmer -</option>' + farmers.map((farmer) => {
             const milkType = farmer.milk_type?.value || farmer.milk_type;
-            return `<option value="${farmer.id}" data-milk-type="${milkType}">${farmer.name} - ${farmer.farmer_id}</option>`;
+            return `<option value="${farmer.id}" data-milk-type="${milkType}">${DairyApp.escapeHtml(farmer.name)} - ${DairyApp.escapeHtml(farmer.farmer_id)}</option>`;
         }).join('');
     }
 
@@ -288,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             entriesBody.innerHTML = entries.length
                 ? entries.map((entry) => `
                     <tr>
-                        <td>${entry.farmer?.name || '-'}</td>
+                        <td>${escapeHtml(entry.farmer?.name || '-')}</td>
                         <td>${Number(entry.quantity || 0).toFixed(1)}</td>
                         <td>${money(entry.rate_per_litre)}</td>
                         <td><strong>${money(entry.amount)}</strong></td>
@@ -340,11 +350,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     fatInput.addEventListener('input', refreshRate);
     snfInput.addEventListener('input', refreshRate);
 
+    let deliveryRequestId = crypto.randomUUID();
+    let saving = false;
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (saving) return;
+        saving = true;
 
         try {
             const payload = DairyApp.formPayload(form);
+            payload.request_id = deliveryRequestId;
             payload.collection_date = date;
             payload.session = session;
             payload.send_sms = event.submitter?.name === 'send_sms'
@@ -358,6 +373,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             DairyApp.flash(result.message || 'Milk collection entry saved.');
             printReceipt(result.data);
+            deliveryRequestId = crypto.randomUUID();
             form.reset();
             farmerSearch.value = '';
             renderFarmerOptions(allFarmers);
@@ -368,6 +384,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             await loadCollection();
         } catch (error) {
             DairyApp.flash(error.message, 'error');
+        } finally {
+            saving = false;
         }
     });
 

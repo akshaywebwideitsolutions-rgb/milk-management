@@ -10,7 +10,7 @@ class FarmerController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Farmer::query()->withTrashed();
+        $query = Farmer::query();
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -67,7 +67,7 @@ class FarmerController extends Controller
     {
         return $request->validate([
             'name' => 'required|string|max:150',
-            'phone' => 'required|string|max:15|unique:farmers,phone' . ($ignoreId ? ",{$ignoreId}" : ''),
+            'phone' => 'required|string|max:15|unique:farmers,phone'.($ignoreId ? ",{$ignoreId}" : ''),
             'village' => 'nullable|string|max:100',
             'milk_type' => 'required|in:cow,buffalo,a2',
             'status' => 'required|in:active,inactive',

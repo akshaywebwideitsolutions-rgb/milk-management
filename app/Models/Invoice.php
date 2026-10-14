@@ -31,15 +31,14 @@ class Invoice extends Model
     {
         static::creating(function (Invoice $invoice) {
             if (empty($invoice->invoice_no)) {
-                $count = Invoice::count() + 1;
-                $invoice->invoice_no = 'INV-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+                $invoice->invoice_no = 'INV-'.strtoupper((string) Str::ulid());
             }
         });
     }
 
     public function farmer()
     {
-        return $this->belongsTo(Farmer::class);
+        return $this->belongsTo(Farmer::class)->withTrashed();
     }
 
     public function billCycle()

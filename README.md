@@ -127,3 +127,108 @@ dairy-app/
 ## License
 
 Proprietary — All rights reserved.
+
+
+## Billing safeguards and automation
+
+Run `php artisan migrate` after updating. Existing milk deliveries are preserved;
+multiple deliveries per farmer/date/session are allowed. Collection POST requests
+must include a UUID `request_id`. Reuse it when retrying the same delivery; use a
+new UUID for each new delivery. The desktop form manages these IDs automatically.
+
+Sent and paid invoices are finalized: their totals cannot be recalculated, and
+collections/deductions cannot be added to their billed period. Draft and pending
+invoices update when new deliveries or deductions are recorded. Generation also
+includes inactive/deleted farmers with deliveries or applied deductions.
+
+Rate changes, farmer deletion, cycle changes and invoice payment/status changes
+require an administrator. Billing cycles and FAT/SNF rate slabs cannot overlap.
+
+For automatic generation, run Laravel's scheduler continuously using
+`php artisan schedule:work`, or run `php artisan schedule:run` every minute from
+your operating system scheduler. Ended cycles with auto-generation enabled are
+processed at 00:10 Asia/Kolkata. No OS scheduled task is installed by this update.
+Invoice SMS requires `MSG91_INVOICE_TEMPLATE_ID` and an API key. Configure an
+approved MSG91 flow with var1=farmer name, var2=invoice number, var3=net amount.
+Without those credentials, invoices generate without sending SMS.
+
+Tests on the XAMPP environment: `C:/xampp/php/php.exe artisan test`.
+Use a PHP installation with PDO SQLite enabled. Tests use an in-memory database
+and a local APP_URL, without modifying the application's MySQL data.
+
+
+## Windows NativePHP development
+
+From the project root in PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-native.ps1
+```
+
+This launcher extracts the complete bundled PHP 8.3 Windows runtime, enables
+required extensions, migrates the separate NativePHP development database and
+starts Electron with visible logs. Keep the terminal open while using the app.
+It avoids the system PHP 8.5 mismatch and the package's incomplete unzip step.
+Electron dependencies must already be installed in the NativePHP vendor package.
+The existing API_BASE_URL/APP_URL still determine which backend the UI calls.
+
+
+## Shared desktop and web data
+
+Start the MySQL service in XAMPP. In a terminal, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-web.ps1
+```
+
+Open `http://127.0.0.1:8000` in your browser. In another terminal, run
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\start-native.ps1`.
+Both interfaces use the web API and its MySQL records. Keep the web backend
+running while using the desktop app. The NativePHP SQLite database is used by
+the desktop runtime, not as a second copy of farmer/collection/invoice data.
+
+For hosted use, deploy this code and migrations to your web server, set its
+APP_URL to your HTTPS website URL, leave API_BASE_URL unset, and set
+DESKTOP_API_BASE_URL on desktop installations to that website's `/api` URL.
+For a subdirectory deployment include the full subdirectory in the desktop API
+URL. Desktop requires access to this backend; this setup does not synchronize
+an offline copy. Run billing automation on the web backend scheduler.
+
+
+## Windows installer for the live website
+
+Build the NativePHP Windows x64 installer with:
+
+```powershell
+node .\build-desktop.cjs
+```
+
+The default hosted URL is
+`https://booking.advancetaxiservice.com/test-project/public/`.
+To target another HTTPS deployment, pass its URL as the first argument.
+The installer is written to `dist/1.0.2/JayMalharDairy-1.0.2-Setup.exe`.
+The installed desktop window opens the hosted website directly, so it uses the
+live login and server data without a local web/MySQL server. Internet access is
+required. Website updates appear automatically in this desktop window.
+
+The build prepares a separate sanitized application environment with its own
+random application key. It excludes the development database, logs, sessions,
+local `.env`, and SMS/database credentials. Development `.env` stays unchanged.
+The Windows runtime and Electron dependencies must already be installed.
+
+
+Desktop 1.0.1 includes the NativePHP preload files, prevents duplicate launches,
+uses a dynamically selected loopback API port, and keeps live navigation and API
+requests inside the hosted project subdirectory. This also supports older live
+pages that still use root-relative dashboard links.
+
+Navigation regression checks: `node desktop/navigation.test.cjs`.
+Read-only packaged smoke check (launch with `--remote-debugging-port=9224` first):
+`node desktop/verify.cjs 9224`.
+
+
+Desktop 1.0.2 additionally redirects a root-domain home/logout URL back into
+`/test-project/public/`, avoiding the hosting root's 403 response. When updating,
+close all app windows and remove older 1.0.0 installations/shortcuts before using
+the new installer. A leftover Program Files installation can otherwise keep
+launching the old app even after a per-user update was installed.

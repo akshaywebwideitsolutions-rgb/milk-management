@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Farmer;
+use App\Models\Invoice;
 use App\Models\MilkCollection;
 use App\Models\SmsLog;
 use Illuminate\Support\Facades\Http;
@@ -10,6 +11,34 @@ use Illuminate\Support\Facades\Log;
 
 class SmsService
 {
+    public function sendInvoiceSMS(Invoice $invoice): bool
+    {
+        $farmer = $invoice->farmer;
+        $log = SmsLog::create([
+            'farmer_id' => $farmer->id,
+            'phone' => $farmer->phone,
+            'message' => "Invoice {$invoice->invoice_no}: Rs.{$invoice->net_amount}",
+            'status' => 'pending',
+        ]);
+        try {
+            $response = Http::timeout(20)->withHeaders(['authkey' => config('sms.api_key')])->post(config('sms.gateway_url'), [
+                'template_id' => config('sms.invoice_template_id'),
+                'mobiles' => $this->formatIndianMobile($farmer->phone),
+                'var1' => $farmer->name,
+                'var2' => $invoice->invoice_no,
+                'var3' => (string) $invoice->net_amount,
+            ]);
+            $success = $response->successful() && $response->json('type') === 'success';
+            $log->update(['status' => $success ? 'sent' : 'failed', 'gateway_response' => substr($response->body(), 0, 250)]);
+
+            return $success;
+        } catch (\Throwable $e) {
+            $log->update(['status' => 'failed', 'gateway_response' => substr($e->getMessage(), 0, 250)]);
+
+            return false;
+        }
+    }
+
     public function sendCollectionSMS(MilkCollection $collection, Farmer $farmer): bool
     {
         return $this->sendMilkSms($collection, $farmer);
@@ -31,11 +60,11 @@ class SmsService
         );
 
         $log = SmsLog::create([
-            'farmer_id'          => $farmer->id,
+            'farmer_id' => $farmer->id,
             'milk_collection_id' => $collection->id,
-            'phone'              => $farmer->phone,
-            'message'            => $message,
-            'status'             => 'pending',
+            'phone' => $farmer->phone,
+            'message' => $message,
+            'status' => 'pending',
         ]);
 
         try {
@@ -59,15 +88,15 @@ class SmsService
 
             $success = $response->successful();
             $log->update([
-                'status'           => $success ? 'sent' : 'failed',
+                'status' => $success ? 'sent' : 'failed',
                 'gateway_response' => $response->body(),
             ]);
 
             return $success;
         } catch (\Throwable $e) {
-            Log::error('MSG91 SMS sending failed: ' . $e->getMessage());
+            Log::error('MSG91 SMS sending failed: '.$e->getMessage());
             $log->update([
-                'status'           => 'failed',
+                'status' => 'failed',
                 'gateway_response' => $e->getMessage(),
             ]);
 
@@ -78,36 +107,37 @@ class SmsService
     public function send(string $phone, string $message, ?int $collectionId = null, ?int $farmerId = null): bool
     {
         $log = SmsLog::create([
-            'farmer_id'          => $farmerId,
+            'farmer_id' => $farmerId,
             'milk_collection_id' => $collectionId,
-            'phone'              => $phone,
-            'message'            => $message,
-            'status'             => 'pending',
+            'phone' => $phone,
+            'message' => $message,
+            'status' => 'pending',
         ]);
 
         try {
             $response = Http::asForm()->post(config('sms.gateway_url'), [
-                'apikey'      => config('sms.api_key'),
-                'sender'      => config('sms.sender_id'),
-                'number'      => $phone,
-                'message'     => $message,
-                'dlt_entity_id'   => config('sms.dlt_entity_id'),
+                'apikey' => config('sms.api_key'),
+                'sender' => config('sms.sender_id'),
+                'number' => $phone,
+                'message' => $message,
+                'dlt_entity_id' => config('sms.dlt_entity_id'),
                 'dlt_template_id' => config('sms.dlt_template_id'),
             ]);
 
             $success = $response->successful();
             $log->update([
-                'status'           => $success ? 'sent' : 'failed',
+                'status' => $success ? 'sent' : 'failed',
                 'gateway_response' => $response->body(),
             ]);
 
             return $success;
         } catch (\Throwable $e) {
-            Log::error('SMS sending failed: ' . $e->getMessage());
+            Log::error('SMS sending failed: '.$e->getMessage());
             $log->update([
-                'status'           => 'failed',
+                'status' => 'failed',
                 'gateway_response' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -117,7 +147,7 @@ class SmsService
         $digits = preg_replace('/\D+/', '', $phone);
 
         if (strlen($digits) === 10) {
-            return '91' . $digits;
+            return '91'.$digits;
         }
 
         return $digits;

@@ -8,6 +8,7 @@ use Tests\TestCase;
 
 class DesktopViewRoutesTest extends TestCase
 {
+    use RefreshDatabase;
     public function test_authenticated_desktop_views_render(): void
     {
         $user = User::factory()->make(['id' => 1]);

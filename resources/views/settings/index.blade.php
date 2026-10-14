@@ -61,7 +61,7 @@
             </div>
             <div class="settings-info-item">
                 <span class="settings-info-label">Current Cycle</span>
-                <span class="settings-info-value">{{ $currentCycle ? $currentCycle->name : 'None active' }}</span>
+                <span class="settings-info-value" id="settings-current-cycle">Loading...</span>
             </div>
         </div>
 
@@ -76,3 +76,18 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const label = document.getElementById('settings-current-cycle');
+    try {
+        const response = await DairyApp.api('/api/bill-cycles');
+        label.textContent = response.data?.current_cycle?.name || 'None active';
+    } catch (error) {
+        label.textContent = 'Unable to load';
+        DairyApp.flash(error.message, 'error');
+    }
+});
+</script>
+@endpush

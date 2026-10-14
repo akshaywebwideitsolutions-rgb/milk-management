@@ -68,14 +68,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 return `
                     <tr>
-                        <td><strong>${farmer.farmer_id}</strong></td>
-                        <td>${farmer.name}</td>
-                        <td>${farmer.phone}</td>
-                        <td>${farmer.village || '-'}</td>
-                        <td><span class="milk-type-badge milk-type-${milkType}">${milkLabel(milkType)}</span></td>
+                        <td><strong>${DairyApp.escapeHtml(farmer.farmer_id)}</strong></td>
+                        <td>${DairyApp.escapeHtml(farmer.name)}</td>
+                        <td>${DairyApp.escapeHtml(farmer.phone)}</td>
+                        <td>${DairyApp.escapeHtml(farmer.village || '-')}</td>
+                        <td><span class="milk-type-badge milk-type-${milkType}">${DairyApp.escapeHtml(milkLabel(milkType))}</span></td>
                         <td><span class="badge-status ${statusClass}">${status}</span></td>
                         <td>
-                            <a href="/farmers/${farmer.id}/edit" class="btn-icon" title="Edit"><i class="fas fa-edit"></i></a>
+                            <a href="${DairyApp.webUrl(`/farmers/${farmer.id}/edit`)}" class="btn-icon" title="Edit"><i class="fas fa-edit"></i></a>
                             <button type="button" class="btn-icon btn-icon-danger" title="Delete" data-delete-farmer="${farmer.id}"><i class="fas fa-trash"></i></button>
                         </td>
                     </tr>

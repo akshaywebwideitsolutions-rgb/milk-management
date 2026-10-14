@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="api-base-url" content="{{ config('app.api_base_url') }}">
+    <meta name="web-base-url" content="{{ url('/') }}">
+    <meta name="api-base-url" content="{{ $apiBaseUrl }}">
     <title>@yield('title', 'Jay Malhar Dairy') — Dairy Management Application</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -120,6 +121,11 @@
         cachePrefix: 'dairy_api_cache:',
         cacheTtl: 30000,
 
+        webUrl(path) {
+            const base = document.querySelector('meta[name=web-base-url]').content.replace(/\/+$/, '');
+            return `${base}/${path.replace(/^\/+/, '')}`;
+        },
+
         token() {
             return localStorage.getItem(this.tokenKey);
         },
@@ -130,17 +136,18 @@
         },
 
         clearSession() {
+            Object.keys(sessionStorage).filter(key => key.startsWith(this.cachePrefix)).forEach(key => sessionStorage.removeItem(key));
             localStorage.removeItem(this.tokenKey);
             localStorage.removeItem(this.userKey);
         },
 
         isLoginPage() {
-            return window.location.pathname.replace(/\/+$/, '') === '/login';
+            return window.location.pathname.replace(/\/+$/, '').endsWith('/login');
         },
 
         requireToken() {
             if (!this.isLoginPage() && !this.token()) {
-                window.location.href = '/login';
+                window.location.href = DairyApp.webUrl('/login');
                 return false;
             }
 
@@ -195,7 +202,7 @@
             };
 
             const response = await fetch(url, {
-                credentials: 'omit',
+                credentials: isSameOriginApi ? 'same-origin' : 'omit',
                 headers,
                 ...options,
             });
@@ -205,7 +212,7 @@
             if (!response.ok) {
                 if (response.status === 401) {
                     this.clearSession();
-                    if (!this.isLoginPage()) window.location.href = '/login';
+                    if (!this.isLoginPage()) window.location.href = DairyApp.webUrl('/login');
                 }
 
                 const message = data.message || Object.values(data.errors || {}).flat()[0] || 'Request failed.';
@@ -249,11 +256,17 @@
             return payload;
         },
 
+        escapeHtml(value) {
+            const node = document.createElement('span');
+            node.textContent = String(value ?? '');
+            return node.innerHTML;
+        },
+
         flash(message, type = 'success') {
             const area = document.querySelector('.content-area') || document.body;
             const alert = document.createElement('div');
             alert.className = `alert alert-${type === 'error' ? 'danger' : type}`;
-            alert.innerHTML = `<i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i> ${message}`;
+            alert.innerHTML = `<i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'}"></i> ${this.escapeHtml(message)}`;
             area.prepend(alert);
             setTimeout(() => alert.remove(), 5000);
         },
@@ -335,7 +348,7 @@
             }
 
             DairyApp.clearSession();
-            window.location.href = '/login';
+            window.location.href = DairyApp.webUrl('/login');
         });
 
         if (qtyInput && rateDisplay && amountDisplay) {

@@ -13,7 +13,10 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
-        Window::open();
+        $window = Window::open();
+        if (config('app.desktop_web_url')) {
+            $window->url(config('app.desktop_web_url'));
+        }
     }
 
     /**

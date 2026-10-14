@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const result = await DairyApp.api(form.dataset.cycleApiAction, {
                     method: form.dataset.apiMethod || 'POST',
-                    body: JSON.stringify(DairyApp.formPayload(form)),
+                    body: JSON.stringify(form === createForm ? { ...DairyApp.formPayload(form), auto_generate_invoice: settingsForm.querySelector('[name=auto_generate_invoice]').checked, sms_on_invoice: settingsForm.querySelector('[name=sms_on_invoice]').checked } : DairyApp.formPayload(form)),
                 });
 
                 DairyApp.flash(result.message || 'Saved successfully.');
